@@ -69,41 +69,57 @@ func (f *freelist) allocate(n int) pgid {
 		return 0
 	}
 
-	var initial, previd pgid
-	for i, id := range f.ids {
-		if id <= 1 {
-			panic(fmt.Sprintf("invalid page allocation: %d", id))
+	// Look for a perfectly sized match.
+	// Failing that, take the smallest match larger than what we need.
+	bestidx := -1
+	bestsz := 0
+	var idx int
+	for idx < len(f.ids) {
+		// Find start and end of next contiguous run.
+		var end int
+		for end = idx + 1; end < len(f.ids) && f.ids[end] == f.ids[end-1]+1; end++ {
 		}
-
-		// Reset initial page if this is not contiguous.
-		if previd == 0 || id-previd != 1 {
-			initial = id
+		size := end - idx
+		prev := idx
+		idx = end
+		if size < n {
+			// Not big enough.
+			continue
 		}
-
-		// If we found a contiguous block then remove it and return it.
-		if (id-initial)+1 == pgid(n) {
-			// If we're allocating off the beginning then take the fast path
-			// and just adjust the existing slice. This will use extra memory
-			// temporarily but the append() in free() will realloc the slice
-			// as is necessary.
-			if (i + 1) == n {
-				f.ids = f.ids[i+1:]
-			} else {
-				copy(f.ids[i-n+1:], f.ids[i+1:])
-				f.ids = f.ids[:len(f.ids)-n]
-			}
-
-			// Remove from the free cache.
-			for i := pgid(0); i < pgid(n); i++ {
-				delete(f.cache, initial+i)
-			}
-
-			return initial
+		// Potential match. Keep if it is smaller than the previous best.
+		if bestidx == -1 || size < bestsz {
+			bestidx = prev
+			bestsz = size
 		}
-
-		previd = id
+		if size == n {
+			// Perfect match. Stop here.
+			break
+		}
 	}
-	return 0
+
+	if bestidx == -1 {
+		// No matches found.
+		return 0
+	}
+
+	// If we're allocating off the beginning then take the fast path
+	// and just adjust the existing slice. This will use extra memory
+	// temporarily but the append() in free() will realloc the slice
+	// as is necessary.
+	pg := f.ids[bestidx]
+	if bestidx == 0 {
+		f.ids = f.ids[n:]
+	} else {
+		copy(f.ids[bestidx:], f.ids[bestidx+n:])
+		f.ids = f.ids[:len(f.ids)-n]
+	}
+
+	// Remove from the free cache.
+	for i := 0; i < n; i++ {
+		delete(f.cache, pg+pgid(i))
+	}
+
+	return pg
 }
 
 // free releases a page and its overflow for a given transaction id.
