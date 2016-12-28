@@ -1,3 +1,5 @@
+// +build ignorefornow
+
 package bolt
 
 import (

@@ -174,15 +174,12 @@ func (tx *Tx) Commit() error {
 	// Free the freelist and allocate new pages for it. This will overestimate
 	// the size of the freelist but not underestimate the size (which would be bad).
 	tx.db.freelist.free(tx.meta.txid, tx.db.page(tx.meta.freelist))
-	p, err := tx.allocate((tx.db.freelist.size() / tx.db.pageSize) + 1)
+	p, err := tx.allocate((tx.db.freelist.pagesize() / tx.db.pageSize) + 1)
 	if err != nil {
 		tx.rollback()
 		return err
 	}
-	if err := tx.db.freelist.write(p); err != nil {
-		tx.rollback()
-		return err
-	}
+	tx.db.freelist.write(p)
 	tx.meta.freelist = p.id
 
 	// If the high water mark has moved up then attempt to grow the database.
@@ -263,9 +260,9 @@ func (tx *Tx) close() {
 	}
 	if tx.writable {
 		// Grab freelist stats.
-		var freelistFreeN = tx.db.freelist.free_count()
-		var freelistPendingN = tx.db.freelist.pending_count()
-		var freelistAlloc = tx.db.freelist.size()
+		var freelistFreeN = tx.db.freelist.freePageCount()
+		var freelistPendingN = tx.db.freelist.pendingPageCount()
+		var freelistAlloc = tx.db.freelist.pagesize()
 
 		// Remove transaction ref & writer lock.
 		tx.db.rwtx = nil
@@ -381,8 +378,7 @@ func (tx *Tx) Check() <-chan error {
 func (tx *Tx) check(ch chan error) {
 	// Check if any pages are double freed.
 	freed := make(map[pgid]bool)
-	all := make([]pgid, tx.db.freelist.count())
-	tx.db.freelist.copyall(all)
+	all := tx.db.freelist.allpages()
 	for _, id := range all {
 		if freed[id] {
 			ch <- fmt.Errorf("page %d: already freed", id)
