@@ -100,10 +100,10 @@ func (s freespan) String() string {
 // If there is exactly 1 freespan returned, u will be non-0 and v will be 0.
 func (s freespan) append(t freespan) (u, v freespan) {
 	if t.start() < s.start() {
-		panic("freespan append out of order")
+		panic(fmt.Errorf("freespan append out of order: %v %v", s, t))
 	}
 	if s.overlaps(t) {
-		panic("freespan append overlaps")
+		panic(fmt.Errorf("freespan append overlaps: %v %v", s, t))
 	}
 	if s.size() == 0 {
 		s = 0
@@ -177,9 +177,13 @@ func mergenorm(dst []freespan, all [][]freespan) []freespan {
 	if len(dst) == 0 {
 		return dst
 	}
-	if len(all) > 1 {
-		sort.Slice(dst, func(i, j int) bool { return dst[i] < dst[j] })
+	if len(dst) == 1 {
+		if dst[0].size() == 0 {
+			return dst[:0]
+		}
+		return dst
 	}
+	sort.Slice(dst, func(i, j int) bool { return dst[i] < dst[j] })
 
 	// Walk dst and normalize.
 	out := 0
@@ -190,12 +194,15 @@ func mergenorm(dst []freespan, all [][]freespan) []freespan {
 		}
 		if v == 0 {
 			dst[out] = u
-			out++
+			// out++
 			continue
 		}
 		dst[out] = u
 		dst[out+1] = v
-		out += 2
+		out++
+	}
+	if dst[out].size() != 0 {
+		out++
 	}
 	dst = dst[:out]
 	return dst

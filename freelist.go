@@ -134,7 +134,7 @@ func (f *freelist) free(txid txid, p *page) {
 	if n == len(spans) {
 		spans = append(spans, pspan)
 	} else {
-		u, v := spans[n].append(pspan)
+		u, v := pspan.append(spans[n])
 		if v == 0 {
 			// spans[n] and pspan were combined. Replace spans[n] with the new value.
 			spans[n] = u
